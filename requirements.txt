@@ -1,0 +1,7 @@
+pandas>=2.0
+numpy
+yfinance>=0.2.50
+requests
+feedparser
+mcp>=1.8   # only needed for `python run.py holdings` (read-only Zerodha sync)
+pytest

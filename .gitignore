@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+data/cache/
+data/holdings.json
+data/demo/
+.pytest_cache/
+dashboard/demo.html

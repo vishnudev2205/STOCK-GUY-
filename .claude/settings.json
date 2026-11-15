@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__kite__login",
+      "mcp__kite__get_holdings"
+    ],
+    "deny": [
+      "mcp__kite__place_order",
+      "mcp__kite__modify_order",
+      "mcp__kite__cancel_order",
+      "mcp__kite__place_gtt_order",
+      "mcp__kite__modify_gtt_order",
+      "mcp__kite__delete_gtt_order"
+    ]
+  }
+}
