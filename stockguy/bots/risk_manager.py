@@ -116,8 +116,8 @@ def plan_buys(ledger, candidates: list[dict], prices: dict, cfg: Config, real: d
         sect[sec] = sect.get(sec, 0.0) + weight
         count += 1
     if count < cfg.min_stocks:
-        notes.append(f"Only {count} stocks pass all checks (target is {cfg.min_stocks}-{cfg.max_stocks}). "
-                     "The rest stays in cash rather than buying weaker companies.")
+        notes.append(f"Only {count} stocks held after this review (target is {cfg.min_stocks}-{cfg.max_stocks}). "
+                     "Too few companies pass every check and fit the budget. The rest stays in cash.")
     return orders, notes
 
 

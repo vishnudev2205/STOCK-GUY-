@@ -63,7 +63,7 @@ class SyntheticData(MarketData):
         fy_ends = pd.date_range(days[0] - pd.DateOffset(years=6), days[-1], freq="YE-MAR")
         fail_at = rng.integers(8, len(fy_ends) - 1) if rng.random() < 0.12 else None
         rev, rows = rng.uniform(300, 4000) * 1e7, []   # rupees
-        shares = float(rng.integers(5, 60)) * 1e6
+        shares = float(rng.integers(5, 60)) * 2e7
         for k, fy in enumerate(fy_ends):
             failed = fail_at is not None and k >= fail_at
             rev *= 1 + (rng.normal(-0.35, 0.1) if failed else rng.normal(g, 0.08))
