@@ -198,7 +198,7 @@ def run_backtest(provider, cfg: Config, years: int | None = None, end=None, log=
     caveats = _caveats(provider, cfg, years, n_years, coverage, no_data_all, non_pit_dates, writeoffs, n_hold, picks)
     return {
         "ok": True, "label": provider.label, "synthetic": "SYNTHETIC" in provider.label,
-        "requested_years": years, "tested_years": round(n_years, 2),
+        "requested_years": years, "tested_years": round(n_years, 2), "capital": cfg.capital,
         "start": str(start.date()), "end": str(days[-1].date()),
         "verdict": verdict, "headline": headline,
         "strategy": {"final_value": final_before, "final_after_exit_tax": final_after, "cagr": cagr,

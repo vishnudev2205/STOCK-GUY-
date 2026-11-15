@@ -1,6 +1,6 @@
 """Bot 5: Risk Manager. Decides how much, never whether a business is good.
 
-Rules: at most 10% in one stock, at most 25% in one sector, 15-20 stocks.
+Rules: at most Rs 15,000 in one buy, at most 10% in one stock, at most 25% in one sector, 15-20 stocks.
 If fewer than 15 companies pass every earlier bot, the rest stays in cash.
 The bot will not lower the bar to fill slots.
 
@@ -98,9 +98,17 @@ def plan_buys(ledger, candidates: list[dict], prices: dict, cfg: Config, real: d
         if sect.get(sec, 0.0) + weight > cfg.max_sector_w + 1e-9:
             notes.append(f"{s}: skipped, {sec} would go above {cfg.max_sector_w:.0%} of the portfolio.")
             continue
-        qty = int(weight * eq / (p * (1 + cfg.slippage)))
+        budget = min(weight * eq, cfg.max_trade_value)
+        one = p * (1 + cfg.slippage)
+        qty = int(budget / one)
+        if qty == 0 and one <= min(cfg.max_stock_w * eq, cfg.max_trade_value):
+            qty = 1                         # one share still fits inside the 10% and per-trade limits
+        if qty == 0:
+            notes.append(f"{s}: passed every check, but one share costs Rs {p:,.0f}, more than the "
+                         f"Rs {min(cfg.max_stock_w * eq, cfg.max_trade_value):,.0f} allowed per stock at this capital.")
+            continue
         cost = qty * p * 1.003
-        if qty <= 0 or cost > spendable:
+        if cost > spendable:
             notes.append(f"{s}: passed every check but there is not enough paper cash left.")
             continue
         orders.append({"symbol": s, "qty": qty, "weight": weight})

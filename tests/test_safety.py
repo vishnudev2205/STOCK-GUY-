@@ -1,5 +1,6 @@
 """The tests that must pass before any number from this project is believed."""
 import copy
+from dataclasses import replace
 import inspect
 import json
 
@@ -83,6 +84,7 @@ def test_failed_companies_are_in_the_past_universe(cfg, market):
 
 
 def test_holding_that_stops_trading_is_written_off(cfg, market):
+    cfg = replace(cfg, capital=1_000_000)
     sym = market.delisted[0]
     s = market.stock(sym)
     last_day = s.close.index[-1]
@@ -107,6 +109,7 @@ def test_zerodha_delivery_charges(cfg):
 
 
 def test_every_trade_pays_charges_and_slippage(cfg):
+    cfg = replace(cfg, capital=1_000_000)
     led = Ledger(cfg)
     led.buy("X", 100, 1000.0, "2023-01-02")
     assert led.cash < cfg.capital - 100 * 1000.0 - 100          # paid more than the sticker price
@@ -134,6 +137,7 @@ def test_losses_reduce_tax_and_carry_forward(cfg):
 
 
 def test_tax_is_actually_deducted_from_paper_cash(cfg):
+    cfg = replace(cfg, capital=1_000_000)
     led = Ledger(cfg)
     led.buy("X", 100, 1000.0, "2024-08-01")
     led.sell("X", None, 3000.0, "2024-12-02")                    # short-term gain of about 2 lakh
@@ -164,7 +168,6 @@ def test_report_has_every_number_asked_for(cfg, market):
 
 def test_verdict_says_lost_when_the_index_wins(cfg, market):
     """Make the rules unable to buy anything: cash earns 0%, the index wins, and the report must say so."""
-    from dataclasses import replace
     r = run_backtest(market, replace(cfg, roce_min=9.9), years=5, log=lambda *_: None)
     assert r["verdict"] == "LOST" and "NOT" in r["headline"]
 
@@ -183,6 +186,24 @@ def test_risk_limits_hold(cfg):
     assert max(led.qty(s) * 250.0 / eq for s in led.positions) <= cfg.max_stock_w + 1e-6
     assert max(risk_manager.sector_weights(led, prices).values()) <= cfg.max_sector_w + 1e-6
     assert led.cash >= 0
+
+
+def test_no_buy_above_the_per_trade_budget(cfg):
+    assert cfg.capital == 50_000 and cfg.max_trade_value == 15_000
+    big = replace(cfg, capital=1_000_000)             # 10% would be Rs 1,00,000; the cap must win
+    led = Ledger(big)
+    cands = [{"symbol": f"S{i}", "name": "", "sector": f"Sec{i}"} for i in range(20)]
+    prices = {c["symbol"]: 730.0 for c in cands}
+    orders, _ = risk_manager.plan_buys(led, cands, prices, big)
+    assert orders and all(o["qty"] * 730.0 * (1 + big.slippage) <= big.max_trade_value for o in orders)
+
+
+def test_share_too_expensive_for_small_capital_is_skipped_with_a_reason(cfg):
+    led = Ledger(cfg)
+    cands = [{"symbol": "PRICEY", "name": "", "sector": "A"}, {"symbol": "OK", "name": "", "sector": "B"}]
+    orders, notes = risk_manager.plan_buys(led, cands, {"PRICEY": 9000.0, "OK": 4000.0}, cfg)
+    assert [o["symbol"] for o in orders] == ["OK"] and orders[0]["qty"] == 1
+    assert any("PRICEY" in n and "one share costs" in n for n in notes)
 
 
 def test_too_few_good_companies_means_cash_not_junk(cfg):

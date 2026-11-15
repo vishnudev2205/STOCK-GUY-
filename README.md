@@ -1,7 +1,7 @@
 # Stock Guy
 
 Six bots that look for Indian companies worth holding for 3-5 years.
-**Paper mode only.** It keeps a pretend portfolio of Rs 10,00,000 in a file on your computer.
+**Paper mode only.** It keeps a pretend portfolio of Rs 50,000 in a file on your computer.
 It cannot place a real order. There is no code in here that can.
 
 ## One command
@@ -77,6 +77,14 @@ What *has* been verified, with 26 automated tests on a made-up market (`python r
 6. The code that talks to Yahoo, NSE, the Wayback Machine and Kite was written without being able to
    reach them. Run `python run.py doctor` first. Expect to fix a rough edge or two on the first real run.
 
+## Small capital: what Rs 50,000 changes
+
+- With 15-20 stocks and the 10% rule, each position is about Rs 2,500-5,000. The Rs 15,000 per-trade
+  cap is a ceiling; the 10% rule is tighter and applies first.
+- Only whole shares can be bought. A company whose single share costs more than Rs 5,000 (10% of the
+  portfolio) is skipped, and the journal says so.
+- Fixed charges bite harder: the Rs 15.34 DP charge on a Rs 3,000 sale is about 0.5%.
+
 ## The six bots (one file each, in `stockguy/bots/`)
 
 | Bot | File | When | What it does |
@@ -85,7 +93,7 @@ What *has* been verified, with 26 automated tests on a made-up market (`python r
 | 2. Business Analyst | `business_analyst.py` | on trigger | Up to 10 years: sales and profit growth, ROCE above 15% (ROE for lenders), debt under 0.5x equity, cash flow backing profit, no loss years, promoter holding/pledge when known. Unknown = not passed. |
 | 3. Framework Judge | `framework_judge.py` | on trigger | Scores QGLP, SMILE, GARP and Damani-style value out of 100 each. Must pass at least two. |
 | 4. Valuation Analyst | `valuation_analyst.py` | on trigger | PE against its own 5-year median and against sector peers, plus PEG. Rejects good companies at bad prices. |
-| 5. Risk Manager | `risk_manager.py` | quarterly | Max 10% a stock, 25% a sector, 15-20 stocks. If fewer than 15 pass, the rest stays in cash. Flags overlap with your real Zerodha holdings. |
+| 5. Risk Manager | `risk_manager.py` | quarterly | Max Rs 15,000 a buy, 10% a stock, 25% a sector, 15-20 stocks. If fewer than 15 pass, the rest stays in cash. Flags overlap with your real Zerodha holdings. |
 | 6. Reviewer | `reviewer.py` | quarterly | Re-checks every holding against the reason it was bought. Sells on a broken business, not on a falling price. Writes `data/journal.md` in plain English. |
 
 Every threshold is in `stockguy/config.py`, with a comment. Change them there.

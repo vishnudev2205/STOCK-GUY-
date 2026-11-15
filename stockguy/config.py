@@ -9,7 +9,8 @@ DATA = ROOT / "data"
 @dataclass
 class Config:
     # ---- money -----------------------------------------------------------
-    capital: float = 1_000_000.0          # Rs 10,00,000 virtual
+    capital: float = 50_000.0             # Rs 50,000 virtual
+    max_trade_value: float = 15_000.0     # never put more than this into a single buy
     cash_buffer: float = 0.02             # keep 2% in cash for charges and tax
 
     # ---- no look-ahead: when is a result "known"? ------------------------

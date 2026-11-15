@@ -101,11 +101,11 @@ function verdict(el){const B=D.backtest;
  <div class="tile"><div class="k">Biggest fall from a peak</div><div class="v">${pct(s.max_drawdown)}</div><div class="s">${s.drawdown_peak} to ${s.drawdown_trough} &middot; index ${pct(x.lump_max_drawdown)}</div></div>
  <div class="tile"><div class="k">Worst calendar year</div><div class="v">${sp(s.worst_year_return)}</div><div class="s">in ${s.worst_year} &middot; index ${sp(x.lump_worst_year_return)} in ${x.lump_worst_year}</div></div>
  <div class="tile"><div class="k">Hit rate</div><div class="v">${pct(s.hit_rate,0)}</div><div class="s">of ${s.purchases} purchases made money &middot; ${pct(s.beat_index_rate,0)} beat the index</div></div></div>
- <div class="card"><h2>₹10,00,000 invested at the start</h2><div class="legend"><span><i style="background:var(--s1)"></i>These rules</span><span><i style="background:var(--s2)"></i>Nifty 50 index fund (lump sum)</span></div>
+ <div class="card"><h2>${rs(B.capital)} invested at the start</h2><div class="legend"><span><i style="background:var(--s1)"></i>These rules</span><span><i style="background:var(--s2)"></i>Nifty 50 index fund (lump sum)</span></div>
  <div class="chart" id="ch"></div><p class="muted">Before exit tax. The SIP is not drawn because its money goes in gradually; compare it using the return-per-year figure.</p></div>
  <div class="card"><h2>Side by side</h2><div class="tw"><table><tr><th></th><th class="n">These rules</th><th class="n">Index fund, lump sum</th><th class="n">Index fund, monthly SIP</th></tr>
  <tr><td>Return per year</td><td class="n">${sp(s.cagr)}</td><td class="n">${sp(x.lump_cagr)}</td><td class="n">${sp(x.sip_xirr)}</td></tr>
- <tr><td>₹10L ends as (after all tax)</td><td class="n">${rs(s.final_after_exit_tax)}</td><td class="n">${rs(x.lump_final)}</td><td class="n">${rs(x.sip_final)}</td></tr>
+ <tr><td>${rs(B.capital)} ends as (after all tax)</td><td class="n">${rs(s.final_after_exit_tax)}</td><td class="n">${rs(x.lump_final)}</td><td class="n">${rs(x.sip_final)}</td></tr>
  <tr><td>Biggest fall</td><td class="n">${pct(s.max_drawdown)}</td><td class="n">${pct(x.lump_max_drawdown)}</td><td class="n">n/a</td></tr>
  <tr><td>Worst year</td><td class="n">${s.worst_year}: ${sp(s.worst_year_return)}</td><td class="n">${x.lump_worst_year}: ${sp(x.lump_worst_year_return)}</td><td class="n">n/a</td></tr>
  <tr><td>Charges paid</td><td class="n">${rs(s.charges_paid)}</td><td class="n" colspan="2">inside the fund's price</td></tr>
@@ -120,12 +120,12 @@ function verdict(el){const B=D.backtest;
 function chart(el,c){const W=1100,H=340,L=56,R=16,T=12,Bm=28,n=c.dates.length;if(n<2)return;
  const max=Math.max(...c.strategy,...c.index)*1.05,min=Math.min(0,...c.strategy,...c.index);
  const X=i=>L+(W-L-R)*i/(n-1),Y=v=>T+(H-T-Bm)*(1-(v-min)/(max-min));
- const lakh=v=>v>=1e7?(v/1e7).toFixed(v>=1e8?0:1)+' Cr':(v/1e5).toFixed(0)+' L';
+ const lakh=v=>v>=1e7?(v/1e7).toFixed(v>=1e8?0:1)+' Cr':v>=1e5?(v/1e5).toFixed(v>=1e6?0:1)+' L':Math.round(v).toLocaleString('en-IN');
  let g='';const step=Math.pow(10,Math.floor(Math.log10(max)))/2,st=max/step>8?step*2:step;
  for(let v=0;v<=max;v+=st)g+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-8}" y="${Y(v)+4}" text-anchor="end">${v?"₹"+lakh(v):"0"}</text>`;
  let last='';c.dates.forEach((d,i)=>{const y=d.slice(0,4);if(y!==last&&d.slice(5,7)==='01'){g+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle">${y}</text>`}last=y});
  const path=a=>a.map((v,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)).join('');
- el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Growth of ten lakh rupees: these rules versus the index fund">${g}
+ el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Growth of the starting capital: these rules versus the index fund">${g}
  <path d="${path(c.index)}" fill="none" stroke="var(--s2)" stroke-width="2" stroke-linejoin="round"/>
  <path d="${path(c.strategy)}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round"/>
  <line id="cx" y1="${T}" y2="${H-Bm}" stroke="var(--mut)" stroke-dasharray="3 3" visibility="hidden"/>

@@ -70,7 +70,7 @@ def print_report(rep: dict, log=print):
     log(f"Period tested: {rep['start']} to {rep['end']} ({rep['tested_years']} years; you asked for {rep['requested_years']})")
     log(f"{'':28}{'These rules':>14}{'Index lump sum':>16}{'Index SIP':>12}")
     log(f"{'Return per year':28}{p(s['cagr']):>14}{p(i['lump_cagr']):>16}{p(i['sip_xirr']):>12}")
-    log(f"{'Rs 10L became (after tax)':28}{s['final_after_exit_tax']:>14,.0f}{i['lump_final']:>16,.0f}{i['sip_final']:>12,.0f}")
+    log(f"{'Rs ' + format(rep.get('capital', 0), ',.0f') + ' became':28}{s['final_after_exit_tax']:>14,.0f}{i['lump_final']:>16,.0f}{i['sip_final']:>12,.0f}")
     log(f"{'Max drawdown':28}{p(s['max_drawdown']):>14}{p(i['lump_max_drawdown']):>16}")
     log(f"{'Worst year':28}{str(s['worst_year']) + ' ' + p(s['worst_year_return']):>14}"
         f"{str(i['lump_worst_year']) + ' ' + p(i['lump_worst_year_return']):>16}")
