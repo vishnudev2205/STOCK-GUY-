@@ -40,9 +40,28 @@ python run.py scout       # only the weekly scout
 python run.py review      # only the quarterly review   (--force to run it early)
 python run.py buy         # start now: paper-buy today's candidates at today's real prices
 python run.py cashout     # what you would get if you sold everything today (--confirm to close)
+python run.py trades      # every paper buy and sell: exact time, price and reason (also data/trades.md)
 python run.py holdings    # read your Zerodha holdings, read-only
 python run.py --demo      # try everything on made-up companies, no internet
 ```
+
+## Trade log
+
+Every paper buy and sell is stamped with the time, the price and the reason, like this:
+
+```
+BUY  12 x ABC (Abc Ltd)
+     Mon 16 Nov 2026, 11:22 IST at Rs 312.40
+     Why: strong quarterly results. Profit growing 22% a year, return on capital 19%, passes QGLP and GARP, PE 24 vs its usual 27
+SELL Mon 01 Mar 2027, 10:05 IST at Rs 351.10
+     Why: Debt rose to 1.2x equity.
+     Result: +455 (+12.4%) after charges, before tax
+```
+
+Live runs use Yahoo's 1-minute price (it can lag a few minutes). With `--demo` or `--offline`, or if
+no quote comes back, the trade is booked at the last close and stamped 15:30. See it with
+`python run.py trades`, in `data/trades.md`, or on the first tab of the dashboard.
+The live-quote code was written without access to Yahoo. Check the first real run.
 
 ## Read this first: what has and has not been tested
 
@@ -50,7 +69,7 @@ python run.py --demo      # try everything on made-up companies, no internet
 Yahoo Finance or NSE. Run `python run.py` on your own computer to get the real verdict. Until then,
 nobody knows whether these rules beat the index fund. Do not assume they do.
 
-What *has* been verified, with 26 automated tests on a made-up market (`python run.py test`):
+What *has* been verified, with 30 automated tests on a made-up market (`python run.py test`):
 
 | Test you asked for | How it is enforced | Checked by |
 |---|---|---|
@@ -132,7 +151,7 @@ stockguy/ledger.py         the paper ledger (a JSON file; no broker code)
 stockguy/backtest.py       the backtest and the index fund comparison
 stockguy/dashboard.py      builds dashboard/index.html
 stockguy/synthetic.py      made-up market for tests and --demo
-tests/                     26 safety tests
+tests/                     30 safety tests
 data/                      ledger.json, journal.md, watchlist.json, backtest_report.json, cache/
 ```
 

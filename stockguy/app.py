@@ -140,7 +140,34 @@ def review_due(cfg: Config, today) -> bool:
         or (today - lastd).days > 100 and q(today) != q(lastd)
 
 
-def cmd_review(provider, cfg: Config, A=None, force=False, log=print):
+def _live(symbols, log):
+    """Live price and time for each symbol, or ({}, None) if quotes cannot be fetched."""
+    from . import live
+    q = live.quotes(symbols, log=log)
+    if not q:
+        log("  ! No live quotes. Paper trades use the last close, stamped 15:30.")
+        return {}, None
+    if not live.market_open():
+        log("  Market is shut. Paper trades use the last traded price, stamped with its real time.")
+    return {s: p for s, (p, _) in q.items()}, {s: t for s, (_, t) in q.items()}
+
+
+def cmd_trades(provider, cfg: Config, log=print) -> str:
+    """Print every paper buy and sell with time, price and reason. Also writes data/trades.md."""
+    from . import trade_log
+    ledger = Ledger(cfg, cfg.data_dir / "ledger.json")
+    today = provider.calendar()[-1]
+    prices = {}
+    for s in ledger.positions:
+        v = provider.view(s, today)
+        if v is not None and v.has_price:
+            prices[s] = v.trade_price
+    out = trade_log.write(ledger, cfg.data_dir / "trades.md", prices)
+    log("\n== TRADE LOG (paper money) ==\n" + out)
+    return out
+
+
+def cmd_review(provider, cfg: Config, A=None, force=False, log=print, live=False):
     """Quarterly. Reviewer then Risk Manager, on the PAPER ledger only."""
     today = provider.calendar()[-1]
     rep = _load(cfg.data_dir / "backtest_report.json", None)
@@ -158,9 +185,15 @@ def cmd_review(provider, cfg: Config, A=None, force=False, log=print):
     if A is None:
         A, _ = assess(provider, today, cfg, extra_symbols=list(ledger.positions), events=_load(cfg.data_dir / "events.json", {}))
     prices = {a["symbol"]: a["trade_price"] for a in A if not a.get("stale") and a.get("trade_price")}
+    when = None
+    if live:
+        lp, when = _live({a["symbol"] for a in A if a.get("qualifies")} | set(ledger.positions), log)
+        prices.update(lp)
     real = risk_manager.load_real_holdings(cfg)
-    entries = quarterly_review(ledger, A, prices, today, cfg, real=real)
+    entries = quarterly_review(ledger, A, prices, today, cfg, real=real, when=when)
     ledger.save()
+    from . import trade_log
+    trade_log.write(ledger, cfg.data_dir / "trades.md", prices)
     jp = cfg.data_dir / "journal.json"
     journal = _load(jp, []) + entries
     _save(jp, journal)
@@ -172,7 +205,7 @@ def cmd_review(provider, cfg: Config, A=None, force=False, log=print):
     log(f"  {sum(e['action'] == 'HOLD' for e in entries)} holdings unchanged. Paper cash Rs {ledger.cash:,.0f}.")
 
 
-def cmd_cashout(provider, cfg: Config, confirm=False, log=print) -> dict | None:
+def cmd_cashout(provider, cfg: Config, confirm=False, log=print, live=False) -> dict | None:
     """Sell every paper holding at the latest real close, pay charges and tax, show what is left.
     Without `confirm` it only shows what you WOULD get; the paper portfolio is left alone."""
     from . import costs
@@ -189,6 +222,13 @@ def cmd_cashout(provider, cfg: Config, confirm=False, log=print) -> dict | None:
         rows.append({"symbol": s, "name": pos["name"], "qty": ledger.qty(s), "bought": pos["lots"][0]["date"],
                      "buy": ledger.avg_price(s), "now": prices[s],
                      "pnl": (prices[s] - ledger.avg_price(s)) * ledger.qty(s)})
+    when = None
+    if live:
+        lp, when = _live(list(ledger.positions), log)
+        prices.update(lp)
+        for r in rows:
+            r["now"] = prices[r["symbol"]]
+            r["pnl"] = (r["now"] - r["buy"]) * r["qty"]
     gross = ledger.equity(prices)
     exit_cost = ledger.exit_tax_estimate(prices, today)
     final = gross - exit_cost
@@ -219,7 +259,7 @@ def cmd_cashout(provider, cfg: Config, confirm=False, log=print) -> dict | None:
             "short to judge a 3-5 year method.")
     if confirm:
         for s in list(ledger.positions):
-            ledger.sell(s, None, prices[s], today, "Cashed out")
+            ledger.sell(s, None, prices[s], today, "Cashed out", when=(when or {}).get(s))
         tax = ledger.exit_tax_estimate({}, today)
         ledger.cash -= tax
         ledger.tax_paid.append({"fy": "at cash-out", "paid_on": str(today.date()), "tax": round(tax, 2)})
@@ -227,6 +267,8 @@ def cmd_cashout(provider, cfg: Config, confirm=False, log=print) -> dict | None:
         out["cash_out"], out["profit"] = ledger.cash, ledger.cash - ledger.start_capital
         out["return"] = ledger.cash / ledger.start_capital - 1
         ledger.save()
+        from . import trade_log
+        trade_log.write(ledger, cfg.data_dir / "trades.md")
         path.rename(cfg.data_dir / f"ledger_closed_{today:%Y%m%d}.json")
         jp = cfg.data_dir / "journal.json"
         journal = _load(jp, []) + [{"date": str(today.date()), "symbol": "", "action": "SELL",

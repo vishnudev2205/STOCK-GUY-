@@ -8,6 +8,7 @@
   python run.py buy          start now: paper-buy today's candidates at today's real prices
   python run.py cashout      show what you would get if you sold everything today
                              (add --confirm to actually close the paper portfolio)
+  python run.py trades       every paper buy and sell: time, price, reason
   python run.py holdings     read your Zerodha holdings (read-only)  [--csv file.csv]
   python run.py dashboard    rebuild dashboard/index.html
   python run.py doctor       check which free data sources are reachable
@@ -53,7 +54,7 @@ def doctor():
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", nargs="?", default="all",
-                    choices=["all", "backtest", "scout", "review", "buy", "cashout", "holdings", "dashboard", "doctor", "test"])
+                    choices=["all", "backtest", "scout", "review", "buy", "cashout", "trades", "holdings", "dashboard", "doctor", "test"])
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--force", action="store_true")
@@ -83,6 +84,10 @@ def main():
     if args.command == "dashboard":
         print("Dashboard:", dashboard.build(provider, cfg))
         return
+    live = not args.demo and not args.offline       # paper trades at the real price, at the real time
+    if args.command == "trades":
+        app.cmd_trades(provider, cfg)
+        return
     if not args.demo:
         app.preload(provider)
     if args.command == "backtest":
@@ -90,12 +95,13 @@ def main():
     elif args.command == "scout":
         app.cmd_scout(provider, cfg, live_events=not args.demo and not args.offline)
     elif args.command == "review":
-        app.cmd_review(provider, cfg, force=args.force)
+        app.cmd_review(provider, cfg, force=args.force, live=live)
     elif args.command == "buy":
-        A = app.cmd_scout(provider, cfg, live_events=not args.demo and not args.offline)
-        app.cmd_review(provider, cfg, A=A, force=True)
+        A = app.cmd_scout(provider, cfg, live_events=live)
+        app.cmd_review(provider, cfg, A=A, force=True, live=live)
+        app.cmd_trades(provider, cfg)
     elif args.command == "cashout":
-        app.cmd_cashout(provider, cfg, confirm=args.confirm)
+        app.cmd_cashout(provider, cfg, confirm=args.confirm, live=live)
     else:
         rep = app._load(cfg.data_dir / "backtest_report.json", None)
         if not rep or args.force:
@@ -103,7 +109,8 @@ def main():
         else:
             app.print_report(rep)
         A = app.cmd_scout(provider, cfg, live_events=not args.demo and not args.offline)
-        app.cmd_review(provider, cfg, A=A, force=args.force)
+        app.cmd_review(provider, cfg, A=A, force=args.force, live=live)
+    print("Trade log: data/trades.md  (or: python run.py trades)")
     print("\nDashboard:", dashboard.build(provider, cfg))
     print("PAPER MODE. No real order was placed, and none can be.")
 

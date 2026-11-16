@@ -17,6 +17,7 @@ def build(provider, cfg: Config) -> Path:
         "watchlist": app._load(cfg.data_dir / "watchlist.json", None),
         "portfolio": app.portfolio_snapshot(provider, cfg),
         "journal": app._load(cfg.data_dir / "journal.json", []),
+        "trade_log": _trade_log(provider, cfg),
         "source": provider.label, "synthetic": "SYNTHETIC" in provider.label,
     }
     out = ROOT / "dashboard" / ("demo.html" if data["synthetic"] else "index.html")
@@ -24,6 +25,19 @@ def build(provider, cfg: Config) -> Path:
     blob = json.dumps(data, default=app._json).replace("</", "<\\/")
     out.write_text(TEMPLATE.replace("__DATA__", blob))
     return out
+
+
+def _trade_log(provider, cfg: Config) -> list[dict]:
+    from . import trade_log
+    from .ledger import Ledger
+    ledger = Ledger(cfg, cfg.data_dir / "ledger.json")
+    today = provider.calendar()[-1]
+    prices = {}
+    for s in ledger.positions:
+        v = provider.view(s, today)
+        if v is not None and v.has_price:
+            prices[s] = v.trade_price
+    return trade_log.rows(ledger, prices)
 
 
 TEMPLATE = r"""<!doctype html>
@@ -84,7 +98,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const cls=v=>v==null?'':v<0?'neg':'pos';
 $('#src').textContent='Data: '+D.source+(D.watchlist?' · as of '+D.watchlist.asof:'');
 if(D.synthetic)$('#banner').innerHTML='<div class="banner">MADE-UP TEST DATA. These are not real companies and these are not real results. This page only shows that the software works.</div>';
-const TABS={Verdict:verdict,Watchlist:watchlist,'Paper portfolio':portfolio,Journal:journal};
+const TABS={'Trade log':tradelog,Verdict:verdict,Watchlist:watchlist,'Paper portfolio':portfolio,Journal:journal};
 const nav=$('nav');Object.keys(TABS).forEach((t,i)=>{const b=document.createElement('button');b.textContent=t;b.setAttribute('role','tab');
 b.onclick=()=>{[...nav.children].forEach(x=>x.setAttribute('aria-selected',x===b));$('#main').innerHTML='';TABS[t]($('#main'));try{localStorage.setItem('sg-tab',t)}catch(e){}};nav.appendChild(b)});
 let start='Verdict';try{start=localStorage.getItem('sg-tab')||start}catch(e){}
@@ -178,8 +192,17 @@ function portfolio(el){const P=D.portfolio,gain=P.equity/P.start-1,O=P.overlap;
  <div class="card"><h2>Sector spread (limit ${pct(P.limits.sector,0)})</h2>${Object.keys(P.sectors).length?`<table>${Object.entries(P.sectors).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td style="width:40%">${esc(k)}</td><td><div class="bar"><i style="width:${Math.min(100,v/0.35*100)}%"></i><b style="left:${P.limits.sector/0.35*100}%"></b></div></td><td class="n">${pct(v)}</td></tr>`).join('')}</table>`:'<p class="muted">Nothing held.</p>'}</div>
  <div class="card"><h2>Overlap with your real Zerodha holdings</h2>${O.synced_at?`<p class="muted">Read-only copy from ${esc(O.synced_at)} &middot; ${O.n_real} real holdings.</p>${O.overlap.length?'<ul>'+O.overlap.map(o=>`<li><b>${esc(o.symbol)}</b> is also ${pct(o.real_weight)} of your real portfolio.</li>`).join('')+'</ul>':'<p>No overlap: nothing in the paper portfolio is in your real account.</p>'}`
  :'<p>Not connected yet. Run <code>python run.py holdings</code> (read-only), or ask Claude to "sync my Zerodha holdings".</p>'}</div>
- <div class="card"><h2>Recent paper trades</h2>${P.trades.length?`<div class="tw"><table><tr><th>Date</th><th>Side</th><th>Stock</th><th class="n">Qty</th><th class="n">Price</th><th class="n">Charges</th><th>Reason</th></tr>
- ${P.trades.slice().reverse().map(t=>`<tr><td>${t.date}</td><td>${t.side}</td><td>${esc(t.symbol)}</td><td class="n">${t.qty}</td><td class="n">${num(t.price,2)}</td><td class="n">${num(t.charges,0)}</td><td class="muted">${esc(t.reason||'')}</td></tr>`).join('')}</table></div>`:'<p class="muted">None yet.</p>'}</div>`}
+ <div class="card"><h2>Recent paper trades</h2>${P.trades.length?`<div class="tw"><table><tr><th>When (IST)</th><th>Side</th><th>Stock</th><th class="n">Qty</th><th class="n">Price</th><th class="n">Charges</th><th>Reason</th></tr>
+ ${P.trades.slice().reverse().map(t=>`<tr><td>${t.time||t.date}</td><td>${t.side}</td><td>${esc(t.symbol)}</td><td class="n">${t.qty}</td><td class="n">${num(t.price,2)}</td><td class="n">${num(t.charges,0)}</td><td class="muted">${esc(t.reason||'')}</td></tr>`).join('')}</table></div>`:'<p class="muted">None yet.</p>'}</div>`}
+
+function tradelog(el){const T=D.trade_log||[];
+ const w=t=>{if(!t)return'n/a';const d=new Date(String(t).replace(' ','T'));return isNaN(d)?esc(t):d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+(String(t).length>10?', '+String(t).slice(11,16)+' IST':'')};
+ if(!T.length){el.innerHTML='<div class="card"><h2>Trade log</h2><p>No paper trades yet. Run <code>python run.py buy</code>.</p></div>';return}
+ el.innerHTML='<div class="card"><h2>Trade log</h2><p class="muted">Every paper buy and sell: when, at what price, and why. Newest first.</p>'+T.map(r=>`<div class="j">
+ <div><span class="act" style="color:var(--good)">BUY</span><b>${r.qty} × ${esc(r.symbol)}</b> <span class="muted">${esc(r.name)}</span></div>
+ <div>${w(r.buy_time)} at <b>${'₹'+num(r.buy_price,2)}</b></div><div class="muted">Why: ${esc(r.buy_reason||'no reason recorded')}</div>
+ ${r.open?`<div style="margin-top:4px"><span class="act" style="color:var(--ink2)">HOLD</span>Still held${r.now_price?` · now ₹${num(r.now_price,2)} <span class="${cls(r.ret)}">${sp(r.ret)}</span>`:''}</div>`
+ :`<div style="margin-top:4px"><span class="act" style="color:var(--bad)">SELL</span>${w(r.sell_time)} at <b>₹${num(r.sell_price,2)}</b> · <span class="${cls(r.pnl)}">${r.pnl>=0?'+':''}${rs(r.pnl)} (${sp(r.ret)})</span></div><div class="muted">Why: ${esc(r.sell_reason||'no reason recorded')}</div>`}</div>`).join('')+'</div>'}
 
 function journal(el){const J=D.journal;
  if(!J.length){el.innerHTML='<div class="card"><h2>Journal</h2><p>Empty. The Reviewer writes here once a quarter.</p></div>';return}

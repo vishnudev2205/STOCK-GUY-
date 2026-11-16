@@ -280,3 +280,24 @@ def test_buy_then_cash_out_adds_up(cfg, market, tmp_path):
     assert final["cash_out"] == pytest.approx(preview["cash_out"], abs=1.0)
     assert final["cash_out"] < cfg.capital                                    # same-day round trip only loses charges
     assert not (tmp_path / "ledger.json").exists() and list(tmp_path.glob("ledger_closed_*.json"))
+
+
+# ---- 8. trade log: time, price and reason on every trade ------------------------------
+def test_trade_log_records_time_price_and_reason(cfg, tmp_path):
+    from stockguy import trade_log
+    cfg = replace(cfg, capital=1_000_000)
+    led = Ledger(cfg)
+    led.buy("ABC", 10, 100.0, "2026-11-16", "Abc Ltd", "Retail", {"summary": "strong quarterly results"},
+            when="2026-11-16 11:22")
+    led.buy("XYZ", 5, 200.0, "2026-11-16", "Xyz Ltd", "Power", {"summary": "debt reduction"})
+    led.sell("ABC", None, 130.0, "2027-03-01", "Debt rose to 1.2x equity.", when="2027-03-01 10:05")
+    rows = trade_log.rows(led, {"XYZ": 210.0})
+    sold = next(r for r in rows if r["symbol"] == "ABC")
+    assert sold["buy_time"] == "2026-11-16 11:22" and sold["sell_time"] == "2027-03-01 10:05"
+    assert sold["buy_reason"] == "strong quarterly results" and "Debt rose" in sold["sell_reason"]
+    assert sold["buy_price"] == pytest.approx(100.1) and sold["pnl"] > 0
+    held = next(r for r in rows if r["symbol"] == "XYZ")
+    assert held["open"] and held["buy_time"] == "2026-11-16 15:30"      # no live quote = the close
+    out = trade_log.write(led, tmp_path / "trades.md", {"XYZ": 210.0})
+    assert "Mon 16 Nov 2026, 11:22 IST" in out and "Why: strong quarterly results" in out
+    assert "SELL Mon 01 Mar 2027, 10:05 IST" in out

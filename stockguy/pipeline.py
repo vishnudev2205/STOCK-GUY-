@@ -95,13 +95,14 @@ def thesis_for(a: dict) -> dict:
 
 
 def quarterly_review(ledger, assessments: list[dict], prices: dict, exec_date, cfg: Config,
-                     real: dict | None = None, fmv_2018=None) -> list[dict]:
+                     real: dict | None = None, fmv_2018=None, when=None) -> list[dict]:
     """Bots 6 then 5, writing to the paper ledger. `prices` are the prices trades happen at.
     Returns journal entries in plain English."""
     by = {a["symbol"]: a for a in assessments}
     day = str(pd.Timestamp(exec_date).date())
     journal = []
     fmv = fmv_2018 or (lambda s: None)
+    at = lambda s: when.get(s) if isinstance(when, dict) else when  # noqa: E731  live quote time per stock
     for t in ledger.settle_tax(exec_date):
         if t["tax"] > 0:
             journal.append({"date": day, "symbol": "", "action": "TAX",
@@ -113,17 +114,19 @@ def quarterly_review(ledger, assessments: list[dict], prices: dict, exec_date, c
                 last = by.get(sym, {}).get("trade_price") or ledger.avg_price(sym)
                 ledger.sell(sym, None, last * (1 - cfg.delist_haircut), exec_date, "Stopped trading (written off)", fmv(sym))
             else:
-                ledger.sell(sym, None, prices[sym], exec_date, "; ".join(d["reasons"]), fmv(sym))
+                ledger.sell(sym, None, prices[sym], exec_date, "; ".join(d["reasons"]), fmv(sym), when=at(sym))
         journal.append({k: d[k] for k in ("date", "symbol", "action", "text")} | {"date": day})
     for t in risk_manager.trims(ledger, prices, cfg) + risk_manager.cash_calls(ledger, prices):
-        if ledger.sell(t["symbol"], t["qty"], prices[t["symbol"]], exec_date, t["reason"], fmv(t["symbol"])):
+        if ledger.sell(t["symbol"], t["qty"], prices[t["symbol"]], exec_date, t["reason"], fmv(t["symbol"]),
+                       when=at(t["symbol"])):
             journal.append({"date": day, "symbol": t["symbol"], "action": "TRIM", "text": f"TRIM {t['symbol']}. {t['reason']}."})
     cands = [a for a in assessments if a.get("qualifies")]
     orders, notes = risk_manager.plan_buys(ledger, cands, prices, cfg, real)
     for o in orders:
         a = by[o["symbol"]]
         th = thesis_for(a)
-        if ledger.buy(a["symbol"], o["qty"], prices[a["symbol"]], exec_date, a["name"], a["sector"], th):
+        if ledger.buy(a["symbol"], o["qty"], prices[a["symbol"]], exec_date, a["name"], a["sector"], th,
+                      when=at(a["symbol"])):
             journal.append({"date": day, "symbol": a["symbol"], "action": "BUY",
                             "text": f"BUY {a['name']} ({o['weight']:.1%} of the portfolio). Why: {th['summary']}."})
     for n in notes:

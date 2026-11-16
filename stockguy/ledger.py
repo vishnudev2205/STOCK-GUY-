@@ -20,6 +20,13 @@ def _d(x) -> str:
     return pd.Timestamp(x).strftime("%Y-%m-%d")
 
 
+def _ts(date, when=None) -> str:
+    """Date and time of a fill, Indian time. Without a live quote the fill is the day's close (15:30)."""
+    if when is not None:
+        return pd.Timestamp(when).strftime("%Y-%m-%d %H:%M")
+    return f"{_d(date)} 15:30"
+
+
 class Ledger:
     def __init__(self, cfg: Config, path: Path | None = None):
         self.cfg, self.path = cfg, path
@@ -38,7 +45,8 @@ class Ledger:
             self.cfg, self.path = cfg, path
 
     # ---- trades -----------------------------------------------------------
-    def buy(self, symbol, qty: int, price: float, date, name="", sector="Unknown", thesis=None) -> dict | None:
+    def buy(self, symbol, qty: int, price: float, date, name="", sector="Unknown", thesis=None,
+            when=None, reason="") -> dict | None:
         qty = int(qty)
         if qty <= 0:
             return None
@@ -51,13 +59,15 @@ class Ledger:
         self.charges_total += fee
         pos = self.positions.setdefault(symbol, {"name": name, "sector": sector, "lots": [],
                                                  "thesis": thesis or {}, "strikes": 0})
-        pos["lots"].append({"date": _d(date), "qty": qty, "price": px})
-        t = {"date": _d(date), "symbol": symbol, "side": "BUY", "qty": qty, "price": round(px, 2),
-             "value": round(value, 2), "charges": round(fee, 2), "mode": MODE}
+        reason = reason or (thesis or {}).get("summary", "")
+        ts = _ts(date, when)
+        pos["lots"].append({"date": _d(date), "time": ts, "qty": qty, "price": px, "reason": reason})
+        t = {"date": _d(date), "time": ts, "symbol": symbol, "side": "BUY", "qty": qty, "price": round(px, 2),
+             "value": round(value, 2), "charges": round(fee, 2), "reason": reason, "mode": MODE}
         self.trades.append(t)
         return t
 
-    def sell(self, symbol, qty: int | None, price: float, date, reason="", fmv_2018=None) -> dict | None:
+    def sell(self, symbol, qty: int | None, price: float, date, reason="", fmv_2018=None, when=None) -> dict | None:
         pos = self.positions.get(symbol)
         if not pos:
             return None
@@ -70,6 +80,7 @@ class Ledger:
         fee = costs.charges(value, "SELL", self.cfg) if value > 0 else 0.0
         self.cash += value - fee
         self.charges_total += fee
+        ts = _ts(date, when)
         left = qty
         while left > 0:                      # first in, first out
             lot = pos["lots"][0]
@@ -78,6 +89,8 @@ class Ledger:
             self.realized.append({"buy_date": lot["date"], "sell_date": _d(date), "gain": gain})
             self.closed.append({"symbol": symbol, "name": pos["name"], "buy_date": lot["date"],
                                 "sell_date": _d(date), "qty": take, "buy_price": lot["price"],
+                                "buy_time": lot.get("time", lot["date"]), "buy_reason": lot.get("reason", ""),
+                                "sell_time": ts,
                                 "sell_price": px, "pnl": (px - lot["price"]) * take - fee * take / qty,
                                 "reason": reason})
             lot["qty"] -= take
@@ -86,7 +99,7 @@ class Ledger:
                 pos["lots"].pop(0)
         if not pos["lots"]:
             del self.positions[symbol]
-        t = {"date": _d(date), "symbol": symbol, "side": "SELL", "qty": qty, "price": round(px, 2),
+        t = {"date": _d(date), "time": ts, "symbol": symbol, "side": "SELL", "qty": qty, "price": round(px, 2),
              "value": round(value, 2), "charges": round(fee, 2), "reason": reason, "mode": MODE}
         self.trades.append(t)
         return t
