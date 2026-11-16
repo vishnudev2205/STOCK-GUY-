@@ -38,6 +38,8 @@ python run.py test        # the safety tests (no internet needed)
 python run.py backtest    # only the backtest      (--years 10)
 python run.py scout       # only the weekly scout
 python run.py review      # only the quarterly review   (--force to run it early)
+python run.py buy         # start now: paper-buy today's candidates at today's real prices
+python run.py cashout     # what you would get if you sold everything today (--confirm to close)
 python run.py holdings    # read your Zerodha holdings, read-only
 python run.py --demo      # try everything on made-up companies, no internet
 ```

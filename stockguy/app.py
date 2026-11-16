@@ -145,8 +145,11 @@ def cmd_review(provider, cfg: Config, A=None, force=False, log=print):
     today = provider.calendar()[-1]
     rep = _load(cfg.data_dir / "backtest_report.json", None)
     if not rep or not rep.get("ok"):
-        log("\n== REVIEW skipped: the backtest has not run successfully yet. Tests come first. ==")
-        return
+        if not force:
+            log("\n== REVIEW skipped: the backtest has not run successfully yet. Tests come first. ==")
+            log("   To start the paper portfolio anyway: python run.py buy")
+            return
+        log("\n!! Buying WITHOUT a successful backtest. These rules are unproven. Paper money only. !!")
     if not force and not review_due(cfg, today):
         log("\n== REVIEW not due (once a quarter). Use `python run.py review --force` to run it anyway. ==")
         return
@@ -167,6 +170,76 @@ def cmd_review(provider, cfg: Config, A=None, force=False, log=print):
         if e["action"] != "HOLD":
             log("  " + e["text"])
     log(f"  {sum(e['action'] == 'HOLD' for e in entries)} holdings unchanged. Paper cash Rs {ledger.cash:,.0f}.")
+
+
+def cmd_cashout(provider, cfg: Config, confirm=False, log=print) -> dict | None:
+    """Sell every paper holding at the latest real close, pay charges and tax, show what is left.
+    Without `confirm` it only shows what you WOULD get; the paper portfolio is left alone."""
+    from . import costs
+    today = provider.calendar()[-1]
+    path = cfg.data_dir / "ledger.json"
+    ledger = Ledger(cfg, path)
+    if not ledger.trades:
+        log("\nNothing to cash out: the paper portfolio has not bought anything yet. Run: python run.py buy")
+        return None
+    prices, rows = {}, []
+    for s, pos in ledger.positions.items():
+        v = provider.view(s, today)
+        prices[s] = v.trade_price if v is not None and v.has_price else ledger.avg_price(s) * (1 - cfg.delist_haircut)
+        rows.append({"symbol": s, "name": pos["name"], "qty": ledger.qty(s), "bought": pos["lots"][0]["date"],
+                     "buy": ledger.avg_price(s), "now": prices[s],
+                     "pnl": (prices[s] - ledger.avg_price(s)) * ledger.qty(s)})
+    gross = ledger.equity(prices)
+    exit_cost = ledger.exit_tax_estimate(prices, today)
+    final = gross - exit_cost
+    first = min(t["date"] for t in ledger.trades)
+    days = max(1, (today - pd.Timestamp(first)).days)
+    bench = provider.benchmark().loc[first:today]
+    idx = float(ledger.start_capital * bench.iloc[-1] / bench.iloc[0]) if len(bench) > 1 else None
+    out = {"date": str(today.date()), "started": first, "days": days, "start_capital": ledger.start_capital,
+           "value_before_exit": gross, "exit_tax_and_charges": exit_cost, "cash_out": final,
+           "profit": final - ledger.start_capital, "return": final / ledger.start_capital - 1,
+           "index_fund_value": idx, "charges_so_far": ledger.charges_total,
+           "tax_so_far": sum(t["tax"] for t in ledger.tax_paid), "open": rows, "closed": ledger.closed,
+           "confirmed": bool(confirm)}
+    log(f"\n== CASH OUT {'(FINAL)' if confirm else '(preview: nothing sold)'} at prices of {today.date()} - paper money ==")
+    log(f"{'Stock':12}{'Qty':>6}{'Bought at':>11}{'Now':>10}{'Profit/loss':>13}  since")
+    for r in sorted(rows, key=lambda r: -r["pnl"]):
+        log(f"{r['symbol']:12}{r['qty']:>6}{r['buy']:>11,.1f}{r['now']:>10,.1f}{r['pnl']:>+13,.0f}  {r['bought']}")
+    for c in ledger.closed:
+        log(f"{c['symbol']:12}{c['qty']:>6}{c['buy_price']:>11,.1f}{c['sell_price']:>10,.1f}{c['pnl']:>+13,.0f}  sold {c['sell_date']}")
+    log(f"\nStarted with            Rs {ledger.start_capital:>12,.0f}   on {first} ({days} days ago)")
+    log(f"Value today             Rs {gross:>12,.0f}")
+    log(f"Selling charges + tax   Rs {exit_cost:>12,.0f}")
+    log(f"CASH OUT                Rs {final:>12,.0f}   ({out['return']:+.1%}, profit Rs {out['profit']:+,.0f})")
+    if idx:
+        log(f"Nifty 50 index fund     Rs {idx:>12,.0f}   same money, same dates, before its exit tax")
+    if days < 365:
+        log("Note: held under a year. Gains are taxed at the higher short-term rate, and this is far too "
+            "short to judge a 3-5 year method.")
+    if confirm:
+        for s in list(ledger.positions):
+            ledger.sell(s, None, prices[s], today, "Cashed out")
+        tax = ledger.exit_tax_estimate({}, today)
+        ledger.cash -= tax
+        ledger.tax_paid.append({"fy": "at cash-out", "paid_on": str(today.date()), "tax": round(tax, 2)})
+        ledger.tax_done_through = costs.fy_of(today)
+        out["cash_out"], out["profit"] = ledger.cash, ledger.cash - ledger.start_capital
+        out["return"] = ledger.cash / ledger.start_capital - 1
+        ledger.save()
+        path.rename(cfg.data_dir / f"ledger_closed_{today:%Y%m%d}.json")
+        jp = cfg.data_dir / "journal.json"
+        journal = _load(jp, []) + [{"date": str(today.date()), "symbol": "", "action": "SELL",
+                                    "text": f"CASHED OUT everything. Started with Rs {ledger.start_capital:,.0f}, "
+                                            f"ended with Rs {ledger.cash:,.0f} ({out['return']:+.1%}) after charges and tax."}]
+        _save(jp, journal)
+        write_journal_md(cfg, journal)
+        (cfg.data_dir / "state.json").unlink(missing_ok=True)
+        log(f"Done. Final paper cash Rs {ledger.cash:,.0f}. The closed ledger is kept in data/. `python run.py buy` starts a new one.")
+    else:
+        log("This was a preview. To really close the paper portfolio: python run.py cashout --confirm")
+    _save(cfg.data_dir / "cashout.json", out)
+    return out
 
 
 def write_journal_md(cfg: Config, journal: list[dict]):

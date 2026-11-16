@@ -5,6 +5,9 @@
   python run.py backtest     the 10-year test against a Nifty 50 index fund
   python run.py scout        weekly: refresh triggers and the scored watchlist
   python run.py review       quarterly: re-check holdings, update the paper portfolio
+  python run.py buy          start now: paper-buy today's candidates at today's real prices
+  python run.py cashout      show what you would get if you sold everything today
+                             (add --confirm to actually close the paper portfolio)
   python run.py holdings     read your Zerodha holdings (read-only)  [--csv file.csv]
   python run.py dashboard    rebuild dashboard/index.html
   python run.py doctor       check which free data sources are reachable
@@ -50,10 +53,11 @@ def doctor():
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", nargs="?", default="all",
-                    choices=["all", "backtest", "scout", "review", "holdings", "dashboard", "doctor", "test"])
+                    choices=["all", "backtest", "scout", "review", "buy", "cashout", "holdings", "dashboard", "doctor", "test"])
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--confirm", action="store_true")
     ap.add_argument("--years", type=int, default=None)
     ap.add_argument("--csv", type=Path, default=None)
     args = ap.parse_args()
@@ -87,6 +91,11 @@ def main():
         app.cmd_scout(provider, cfg, live_events=not args.demo and not args.offline)
     elif args.command == "review":
         app.cmd_review(provider, cfg, force=args.force)
+    elif args.command == "buy":
+        A = app.cmd_scout(provider, cfg, live_events=not args.demo and not args.offline)
+        app.cmd_review(provider, cfg, A=A, force=True)
+    elif args.command == "cashout":
+        app.cmd_cashout(provider, cfg, confirm=args.confirm)
     else:
         rep = app._load(cfg.data_dir / "backtest_report.json", None)
         if not rep or args.force:

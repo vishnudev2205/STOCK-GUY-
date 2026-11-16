@@ -263,3 +263,20 @@ def test_no_broker_sdk_anywhere():
         assert "kiteconnect" not in text, f
         if f.name != "kite_readonly.py":
             assert "place_order" not in text and "kite.trade" not in text, f
+
+
+# ---- 7. buy now, cash out later ------------------------------------------------------
+def test_buy_then_cash_out_adds_up(cfg, market, tmp_path):
+    from stockguy import app
+    cfg = replace(cfg, data_dir=tmp_path)
+    assert app.cmd_cashout(market, cfg, log=lambda *_: None) is None          # nothing bought yet
+    A = app.cmd_scout(market, cfg, live_events=False, log=lambda *_: None)
+    app.cmd_review(market, cfg, A=A, force=True, log=lambda *_: None)         # no backtest on file: needs force
+    led = Ledger(cfg, tmp_path / "ledger.json")
+    assert led.positions and all(t["value"] <= cfg.max_trade_value for t in led.trades)
+    preview = app.cmd_cashout(market, cfg, log=lambda *_: None)
+    assert (tmp_path / "ledger.json").exists() and not preview["confirmed"]   # a preview sells nothing
+    final = app.cmd_cashout(market, cfg, confirm=True, log=lambda *_: None)
+    assert final["cash_out"] == pytest.approx(preview["cash_out"], abs=1.0)
+    assert final["cash_out"] < cfg.capital                                    # same-day round trip only loses charges
+    assert not (tmp_path / "ledger.json").exists() and list(tmp_path.glob("ledger_closed_*.json"))
